@@ -1,4 +1,4 @@
-"""SQLite persistence. Contains deliberate reliability/security problems."""
+"""SQLite persistence."""
 import sqlite3
 from models import Product
 
@@ -12,16 +12,19 @@ class StoreRepository:
 
     def get_product(self, sku):
         conn = self.connect()
-        #SQL injection
-        row = conn.execute("SELECT sku, name, price, stock FROM products WHERE sku = ?",(sku,)).fetchone()
+        row = conn.execute(
+            "SELECT sku, name, price, stock FROM products WHERE sku = ?",
+            (sku,)
+        ).fetchone()
         conn.close()
         return Product(*row) if row else None
 
     def get_saved_cart(self, user_id):
         conn = self.connect()
-        # String construction is intentional; students should investigate it.
-        #SQL injection
-        rows = conn.execute("SELECT sku, quantity FROM saved_cart WHERE user_id = ?",(user_id,)).fetchall()
+        rows = conn.execute(
+            "SELECT sku, quantity FROM saved_cart WHERE user_id = ?",
+            (user_id,)
+        ).fetchall()
         conn.close()
         return rows
 
@@ -40,7 +43,7 @@ class StoreRepository:
                 'UPDATE products SET stock = stock - ? WHERE sku = ? AND stock >= ?',
                 (quantity, sku, quantity))
             conn.commit()
-            return cur.rowcount == 1     
+            return cur.rowcount == 1
         finally:
             conn.close()
 
@@ -53,8 +56,21 @@ class StoreRepository:
         conn.close()
         return order_id
 
+    def get_order_by_request_id(self, request_id):
+        conn = self.connect()
+        try:
+            return conn.execute(
+                'SELECT id, amount, status FROM orders WHERE request_id = ?',
+                (request_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+
     def list_orders(self, user_id):
         conn = self.connect()
-        rows = conn.execute('SELECT id, user_id, amount, status FROM orders WHERE user_id = ? ORDER BY id DESC',(user_id,)).fetchall()
+        rows = conn.execute(
+            'SELECT id, user_id, amount, status FROM orders WHERE user_id = ? ORDER BY id DESC',
+            (user_id,)
+        ).fetchall()
         conn.close()
         return rows

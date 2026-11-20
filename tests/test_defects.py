@@ -224,3 +224,59 @@ def test_checkout_does_not_print_the_payment_token(repo, cart, capsys):
     cart.add_item('MOU-01', 1)
     CheckoutService(repo, FakePaymentGateway()).checkout(cart, 'SECRET_TOKEN_123', 'req-1')
     assert 'SECRET_TOKEN_123' not in capsys.readouterr().out
+
+
+def test_discount_updates_when_cart_changes(repo, cart):
+    cart.add_item('MOU-01', 1)
+    cart.apply_discount('WELCOME10')
+    cart.add_item('MOU-01', 1)
+    assert cart.total() == pytest.approx(29.95 * 2 * 0.9)
+
+
+def test_same_request_id_charges_only_once(repo, cart):
+    gateway = FakePaymentGateway()
+    service = CheckoutService(repo, gateway)
+    cart.add_item('MOU-01', 1)
+    first = service.checkout(cart, 'TEST_TOKEN', 'req-1')
+    cart.add_item('MOU-01', 1)
+    second = service.checkout(cart, 'TEST_TOKEN', 'req-1')
+    assert first.order_id == second.order_id
+    assert len(gateway.calls) == 1
+    assert repo.get_product('MOU-01').stock == 19
+
+
+def test_retry_with_empty_cart_returns_original_order(repo, cart):
+    service = CheckoutService(repo, FakePaymentGateway())
+    cart.add_item('MOU-01', 1)
+    first = service.checkout(cart, 'TEST_TOKEN', 'req-1')
+    retry = service.checkout(cart, 'TEST_TOKEN', 'req-1')
+    assert retry.order_id == first.order_id
+    assert retry.status == 'paid'
+
+
+def test_checkout_rejects_missing_request_id(repo, cart):
+    gateway = FakePaymentGateway()
+    cart.add_item('MOU-01', 1)
+    result = CheckoutService(repo, gateway).checkout(cart, 'TEST_TOKEN', None)
+    assert result.status == 'missing_request_id'
+    assert gateway.calls == []
+
+
+def test_checkout_out_of_stock_is_not_charged(repo, cart):
+    gateway = FakePaymentGateway()
+    cart.add_item('LAP-01', 3)
+    repo.update_stock('LAP-01', 4)
+    result = CheckoutService(repo, gateway).checkout(cart, 'TEST_TOKEN', 'req-1')
+    assert result.status == 'out_of_stock'
+    assert gateway.calls == []
+    assert repo.get_product('LAP-01').stock == 1
+    assert len(cart.lines) == 1
+
+
+def test_out_of_stock_releases_items_already_reserved(repo, cart):
+    cart.add_item('MOU-01', 2)
+    cart.add_item('LAP-01', 3)
+    repo.update_stock('LAP-01', 4)
+    result = CheckoutService(repo, FakePaymentGateway()).checkout(cart, 'TEST_TOKEN', 'req-1')
+    assert result.status == 'out_of_stock'
+    assert repo.get_product('MOU-01').stock == 20

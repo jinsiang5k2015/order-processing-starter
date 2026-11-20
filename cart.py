@@ -1,5 +1,7 @@
-"""Business logic. Several design and correctness issues are intentional."""
+"""Business logic."""
 from models import CartLine
+
+VALID_CODES = ('WELCOME10', 'STUDENT20', 'SAVE15', 'FREESHIP')
 
 
 class ShoppingCart:
@@ -8,18 +10,14 @@ class ShoppingCart:
         self.repository = repository
         self.lines = []
         self.discount_code = None
-        self.discounted_total = None
 
     def add_item(self, sku, quantity):
-        product = self.repository.get_product(sku)
         if quantity <= 0:
             print('Invalid quantity')
             return False
+        product = self.repository.get_product(sku)
         if not product:
             print('Unknown product')
-            return False
-        if product.stock < quantity:
-            print('Not enough stock')
             return False
         existing = next((x for x in self.lines if x.sku == sku), None)
         in_cart = existing.quantity if existing else 0
@@ -47,25 +45,22 @@ class ShoppingCart:
         return sum(line.unit_price * line.quantity for line in self.lines)
 
     def total(self):
-        if self.discounted_total is not None:
-            return self.discounted_total
-        return self.subtotal()
+        amount = self.subtotal()
+        if self.discount_code == 'WELCOME10':
+            amount *= 0.9
+        elif self.discount_code == 'STUDENT20':
+            amount *= 0.8
+        elif self.discount_code == 'SAVE15':
+            amount = max(amount - 15, 0)
+        return amount
 
     def apply_discount(self, code):
-        amount = self.subtotal()
-        if code == 'WELCOME10':
-            amount *= 0.9
-        elif code == 'STUDENT20':
-            amount *= 0.8
-        elif code == 'SAVE15':
-            amount = max(amount - 15, 0)
-        elif code == 'FREESHIP':
-            print('Shipping is free')
-        else:
+        if code not in VALID_CODES:
             print('Invalid coupon')
             return False
+        if code == 'FREESHIP':
+            print('Shipping is free')
         self.discount_code = code
-        self.discounted_total = amount
         return True
 
     def load(self):
